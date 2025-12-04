@@ -1,0 +1,187 @@
+#include <curses.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#define WIDTH 80
+#define HEIGHT 25
+#define SPEED 200
+#define MIN_SPEED 50
+#define MAX_SPEED 350
+
+int input(int **matrix);
+void neighbours(int **matrix, int **screen, int n, int m);
+int count(int **matrix, int i, int j, int n, int m);
+void mechanic(int **matrix, int **new_matrix, int **screen, int n, int m, int *generation);
+int count_population(int **new_matrix, int n, int m);
+void free_matrix(int **matrix, int n);
+int compar(int **matrix1, int **matrix2, int n, int m);
+int game(int **matrix, int **new_matrix, int **screen);
+
+int main() {
+    int **matrix = calloc(HEIGHT, sizeof(int *));
+    for (int i = 0; i < HEIGHT; i++) {
+        matrix[i] = calloc(WIDTH, sizeof(int));
+    }
+    int **new_matrix = calloc(HEIGHT, sizeof(int *));
+    for (int i = 0; i < HEIGHT; i++) {
+        new_matrix[i] = calloc(WIDTH, sizeof(int));
+    }
+    int **screen = calloc(HEIGHT, sizeof(int *));
+    for (int i = 0; i < HEIGHT; i++) {
+        screen[i] = calloc(WIDTH, sizeof(int));
+    }
+
+    if (input(matrix) == 1) {
+        printf("n/a");
+        free_matrix(matrix, HEIGHT);
+        free_matrix(new_matrix, HEIGHT);
+        free_matrix(screen, HEIGHT);
+    } else {
+        FILE *file = freopen("/dev/tty", "r", stdin);
+        if (!file) return 1;
+
+        game(matrix, new_matrix, screen);
+
+        free_matrix(matrix, HEIGHT);
+        free_matrix(new_matrix, HEIGHT);
+        free_matrix(screen, HEIGHT);
+    }
+
+    return 0;
+}
+
+int input(int **matrix) {
+    int flag = 0;
+    for (int i = 0; i < HEIGHT && !flag; i++) {
+        for (int j = 0; j < WIDTH && !flag; j++) {
+            if (scanf("%d", &matrix[i][j]) != 1) {
+                flag = 1;
+            }
+        }
+    }
+    return flag;
+}
+
+void neighbours(int **matrix, int **screen, int n, int m) {
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < m; j++) {
+            screen[i][j] = count(matrix, i, j, n, m);
+        }
+    }
+}
+
+int count(int **matrix, int i, int j, int n, int m) {
+    int counter = 0;
+    for (int a = -1; a < 2; a++) {
+        for (int b = -1; b < 2; b++) {
+            if (a == 0 && b == 0) {
+                continue;
+            } else {
+                int ii = (a + i + n) % n;
+                int jj = (b + j + m) % m;
+                counter += matrix[ii][jj];
+            }
+        }
+    }
+    return counter;
+}
+
+void mechanic(int **matrix, int **new_matrix, int **screen, int n, int m, int *generation) {
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < m; j++) {
+            new_matrix[i][j] = matrix[i][j];
+        }
+    }
+    neighbours(matrix, screen, HEIGHT, WIDTH);
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < m; j++) {
+            if (matrix[i][j] != 0) {
+                matrix[i][j] = (screen[i][j] == 2 || screen[i][j] == 3);
+            } else {
+                matrix[i][j] = (screen[i][j] == 3);
+            }
+        }
+    }
+
+    *generation = *generation + 1;
+}
+
+int count_population(int **new_matrix, int n, int m) {
+    int ctr = 0;
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < m; j++) {
+            if (new_matrix[i][j] == 1) {
+                ctr++;
+            }
+        }
+    }
+    return ctr;
+}
+
+void free_matrix(int **matrix, int n) {
+    for (int i = 0; i < n; i++) {
+        int *temp = matrix[i];
+        free(temp);
+    }
+    free(matrix);
+}
+
+int compar(int **matrix1, int **matrix2, int n, int m) {
+    int flag = 1;
+    for (int i = 0; i < n && flag; i++) {
+        for (int j = 0; j < m && flag; j++) {
+            if (matrix1[i][j] != matrix2[i][j]) {
+                flag = 0;
+            }
+        }
+    }
+    return flag;
+}
+
+int game(int **matrix, int **new_matrix, int **screen) {
+    initscr();
+    cbreak();
+    noecho();
+    keypad(stdscr, TRUE);
+    nodelay(stdscr, TRUE);
+
+    neighbours(matrix, screen, HEIGHT, WIDTH);
+    int generation = 0;
+    mechanic(matrix, new_matrix, screen, HEIGHT, WIDTH, &generation);
+
+    int delay = SPEED;
+    while (1) {
+        int ch = getch();
+        if ((ch == 'a' || ch == 'A') && delay > MIN_SPEED)
+            delay -= 30;
+        else if ((ch == 'z' || ch == 'Z') && delay < MAX_SPEED)
+            delay += 30;
+        else if (ch == ' ')
+            break;
+
+        mechanic(matrix, new_matrix, screen, HEIGHT, WIDTH, &generation);
+
+        for (int i = 0; i < HEIGHT; i++) {
+            for (int j = 0; j < WIDTH; j++) {
+                mvprintw(i, j * 2, "%c", matrix[i][j] ? 'O' : '.');
+            }
+        }
+        int ctr = count_population(new_matrix, HEIGHT, WIDTH);
+        mvprintw(HEIGHT, 0, "Generation: %d  Population: %d  Speed: %dms", generation, ctr, delay);
+
+        if (compar(matrix, new_matrix, HEIGHT, WIDTH) == 1) {
+            ctr = 0;
+        }
+
+        if (ctr == 0) {
+            break;
+        }
+
+        refresh();
+        napms(delay);
+    }
+
+    endwin();
+
+    return 0;
+}
